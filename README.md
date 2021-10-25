@@ -19,8 +19,18 @@ to start the UI:
 to start Python server:
     cd src; uvicorn main:app
 
-to start Elastic backend:
-    docker run --memory=3gb --name es01-test --net elastic -p 9200:9200 -p 9300:9300 -e "discovery.type=single-node" docker.elastic.co/elasticsearch/elasticsearch:7.15.1
+
+to populate Elastic with data, use Metricbeat (requires both Elastic and Kibana to be running first)
     
-to populate Elastic with data:
-    https://www.elastic.co/guide/en/beats/metricbeat/7.15/metricbeat-installation-configuration.html
+    to start Elastic:
+        docker run --memory=3gb --name es01-test --net elastic -p 9200:9200 -p 9300:9300 -e "discovery.type=single-node" docker.elastic.co/elasticsearch/elasticsearch:7.15.1
+
+    to start Kibana:
+        docker run --memory=2gb --name kib01-test --net elastic -p 5601:5601 -e "ELASTICSEARCH_HOSTS=http://es01-test:9200" docker.elastic.co/kibana/kibana:7.15.1
+
+    to configure Elastic/Kibana (for Metricbeat):
+        /usr/bin/metricbeat setup -e
+        service start metricbeat
+
+    to setup Metricbeat (before starting it, for the first time)
+        https://www.elastic.co/guide/en/beats/metricbeat/7.15/metricbeat-installation-configuration.html

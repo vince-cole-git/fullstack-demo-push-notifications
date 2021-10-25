@@ -1,42 +1,57 @@
 import { writable } from 'svelte/store';
 
-let msgs = []
-const msgStore = writable([]);
+const sockets = []
+let msgs = {}
+const msgStores = {}
 
-const socket = new WebSocket('ws://localhost:8000/ws');
+function setupWebsocket(channel) {
 
-// Connection opened
-socket.addEventListener('open', function (event) {
-    console.log("WebSocket opened");
-});
+	msgs[channel] = []
+	msgStores[channel] = writable([]);
 
-// Connection closed
-socket.addEventListener('close', function (event) {
-    console.log("WebSocket closed");
-});
-
-// Listen for messages
-socket.addEventListener('message', function(event) {
-	console.log("WebSocket message received")
+	const socket = new WebSocket('ws://localhost:8000/ws' + '/' + channel);	
 	
-	const msg = event.data
-	const is_changed = (msgs.length < 1 ) || (msgs[0].value != msg)
-	const num_ticks = is_changed ? 0 : (msgs[0].num_ticks + 1)
+	// on WebSocket Connection Opened
+	socket.addEventListener('open', function (event) {
+		console.log("WebSocket opened (channel: "+channel+")");
+	});
 
-	console.log( "status has " + ( is_changed ? '' : 'not' ) + " changed" )
+	// on WebSocket Connection Closed
+	socket.addEventListener('close', function (event) {
+		console.log("WebSocket closed (channel: "+channel+")");
+	});
 
-	msgs = [{value: msg, is_changed: is_changed, num_ticks: num_ticks}]
-	msgStore.set(msgs);
-});
+	// on WebSocket Message Received
+	socket.addEventListener('message', function(event) {
+		console.log("WebSocket message received (channel: "+channel+")")
+		const msg = JSON.parse(event.data)
+		if (msg.channel == channel) {
+			msgs[channel] = [ ...(msgs[channel]), JSON.stringify(msg.content) ]
+			msgStores[channel].set( msgs[channel] );
+		}	
+	});
 
+	sockets[channel] = socket
+	return msgStores[channel]
+}
 
-const sendMessage = (message) => {
+const sendMessage = (channel, message) => {
+	const socket = sockets[channel]
 	if (socket.readyState <= 1) {
 		socket.send(message);
 	}
 }
 
+const forChannel = ( channel ) => { return msgStores[channel] }
+
+const clearMessages = ( channel ) => { 
+	msgs[channel] = []
+	msgStores[channel].set(msgs[channel]) 
+}
+
 export default {
-	subscribe: msgStore.subscribe,
-	sendMessage
+	setupWebsocket,
+	sendMessage,
+	forChannel,
+	clearMessages
 }
