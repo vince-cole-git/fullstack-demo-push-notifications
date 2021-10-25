@@ -34,7 +34,7 @@ prev_records = {
 async def websocket_handler(websocket: WebSocket, channel = ''):
     
     # TODO set this to the correct value before running!
-    index = "metricbeat-7.15.1-2021.10.25-000001"
+    index = "metricbeat-7.15.1-2021.10.25"
 
     # TODO can we push from Elastic instead of polling it?
     polling_period_sec = 1
