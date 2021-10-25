@@ -31,7 +31,7 @@
 		&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<input type="button" on:click={onClearMessages} value="Clear!" />
 	</p>
 	{#if isChecked}
-		<p>|<strong>Count: {messages.length}</strong></p>
+		<p><strong>Count: {messages.length}</strong></p>
 		{#each messages as message}
 		<p>
 			{message}

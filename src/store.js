@@ -25,10 +25,8 @@ function setupWebsocket(channel) {
 	socket.addEventListener('message', function(event) {
 		console.log("WebSocket message received (channel: "+channel+")")
 		const msg = JSON.parse(event.data)
-		if (msg.channel == channel) {
-			msgs[channel] = [ ...(msgs[channel]), JSON.stringify(msg.content) ]
-			msgStores[channel].set( msgs[channel] );
-		}	
+		msgs[channel] = [ JSON.stringify(msg.content), ...(msgs[channel]) ]
+		msgStores[channel].set( msgs[channel] );
 	});
 
 	sockets[channel] = socket
