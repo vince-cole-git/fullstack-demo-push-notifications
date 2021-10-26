@@ -9,10 +9,14 @@ progress so far:
 * have multiple parallel independent components in the UI (each driven by their own backend data)
 * remove the logic (to determine when the backend status has changed) from the UI
 * put this logic in the middleware instead
+* installed an Elastic plugin which pushes change notifications out on a websocket - requires Elastic and Kibana 6.5.3, so installed them also (instead of latest version 7.15.1) 
+* have to install the plugin into Elastic (and then restart Elastic) which can't be done easily with Elastic running inside a Docker container (so not using Docker now)
 
 TODO
-* OR (even better) see if Elastic can send push notifications to the middleware (when the data has changed, so then this logic would reside within Elastic itself)
-* see the TODO in the UPDATE below
+    configure the plugin to push the appropriate updates out to the WS
+    change the Python code to use the Elastic WS instead of polling it
+
+
 
 to start the UI:
     npm run dev
@@ -21,35 +25,51 @@ to start Python server:
     cd src; uvicorn main:app
 
 
-to populate Elastic with data, use Metricbeat (requires both Elastic and Kibana to be running first)
+to install *** VERSION: 6.5.3 *** of Elastic, Kibana, Metricbeat
+    echo "deb https://artifacts.elastic.co/packages/6.x/apt stable main" | sudo tee –a /etc/apt/sources.list.d/elastic-6.x.list
+    apt update
+    apt install elasticsearch=6.5.3
+    apt install kibana=6.5.3
+    cd /tmp
+    wget https://artifacts.elastic.co/downloads/beats/metricbeat/metricbeat-6.5.3-amd64.deb
+    dpkg -i /tmp/metricbeat-6.5.3-amd64.deb
+
+
+to install the plugin
+    git clone https://github.com/ForgeRock/es-change-feed-plugin.git
+    cd es-change-feed-plugin
+    mvn clean install  
+    mkdir /tmp/elasticsearch
+    cp target/es-changes-feed-plugin.zip /tmp/elasticsearch
+    cd /tmp/elasticsearch
+    unzip es-changes-feed-plugin.zip 
+    cd ..
+    zip -r es-changes-feed-plugin.zip elasticsearch
+    # requires Elastic to be running first
+    /usr/share/elasticsearch/bin/elasticsearch-plugin install file:///tmp/es-changes-feed-plugin.zip
+    systemctl restart elastic 
+
+
+to run the demo:
     
-    to start Elastic:
-        docker run --memory=3gb --name es01-test --net elastic -p 9200:9200 -p 9300:9300 -e "discovery.type=single-node" docker.elastic.co/elasticsearch/elasticsearch:7.15.1
+    start Python server:
+        cd src; uvicorn main:app
 
-    to start Kibana:
-        docker run --memory=2gb --name kib01-test --net elastic -p 5601:5601 -e "ELASTICSEARCH_HOSTS=http://es01-test:9200" docker.elastic.co/kibana/kibana:7.15.1
+    start the UI:
+        npm run dev
 
-    to configure Elastic/Kibana (for Metricbeat):
+    start Elastic:
+        systemctl start elastic
+
+    start Kibana:
+        # requires Elastic to be running first
+        systemctl start kibana
+
+    start  Metricbeat:
+        # requires Elastic and Kibana to be running first
         /usr/bin/metricbeat setup -e
-        service start metricbeat
-
-    to setup Metricbeat (before starting it, for the first time)
-        https://www.elastic.co/guide/en/beats/metricbeat/7.15/metricbeat-installation-configuration.html
+        systemctl start metricbeat
 
 
-UPDATE:
-    there is an Elastic plugin which pushes change notifications out on a websocket. 
-    
-    see https://github.com/ForgeRock/es-change-feed-plugin.git
 
-    Its not currently proven to work with Elastic > 6.5.3
-    so (for now at least) this POC will use Elastic 6.5.3
-    ie.
-        sudo docker pull docker.elastic.co/elasticsearch/elasticsearch:6.5.3
-        docker run --memory=1gb -p 9200:9200 -p 9300:9300 -e "discovery.type=single-node" docker.elastic.co/elasticsearch/elasticsearch:6.5.3
 
-    TODO
-        put the plugin in the elastic Docker container
-        load the plugin into Elastic
-        configure the plugin to push the appropriate updates out to the WS
-        change the Python code to use the Elastic WS instead of polling it

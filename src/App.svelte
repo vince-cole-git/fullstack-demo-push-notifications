@@ -11,8 +11,7 @@
 		"system.cpu",
 		"system.load",
 		"system.memory",
-		"system.process.summary",
-		"system.socket.summary",
+		"system.process_summary",
 		"system.fsstat",
 		"system.uptime"
 	]

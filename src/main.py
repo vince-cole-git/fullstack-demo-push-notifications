@@ -25,16 +25,17 @@ prev_records = {
     "system.cpu" : '',
     "system.load" : '',
     "system.memory" : '',
-    "system.process.summary" : '',
-    "system.socket.summary" : '',
+    "system.process_summary" : '',
     "system.fsstat" : '',
     "system.uptime" : ''
 }
 
 async def websocket_handler(websocket: WebSocket, channel = ''):
     
-    # TODO set this to the correct value before running!
-    index = "metricbeat-7.15.1-2021.10.25"
+    es_version = "6.5.3"
+    es_index = "metricbeat-" + es_version + "-" + datetime.today().strftime("%Y.%m.%d")
+    print( "querying ES index: " + es_index )
+    es_query = { "bool": { "must": [ { "term": { "metricset.name": channel.split('.')[-1] } } ] } }
 
     # TODO can we push from Elastic instead of polling it?
     polling_period_sec = 1
@@ -56,8 +57,9 @@ async def websocket_handler(websocket: WebSocket, channel = ''):
         if is_publishing:
             print( str(datetime.now()) + " - querying elastic..." + " (channel: " + channel + ")")
             try:
-                es_query = { "bool": { "must": [ { "term": { "event.dataset": channel } } ] } }
-                es_result = es.search( index=index, body={ "query": es_query, "size": 1, "sort": { "@timestamp": "desc"} } )
+                es_query_body = { "query": es_query, "size": 1, "sort": { "@timestamp": "desc"} }
+                print( es_query_body )
+                es_result = es.search( index=es_index, body=es_query_body )
                 es_record = es_result["hits"]["hits"][0]["_source"]["system"]
             except:
                 es_record = ''
@@ -98,14 +100,10 @@ async def websocket_endpoint(websocket: WebSocket):
 async def websocket_endpoint(websocket: WebSocket):
     await websocket_handler(websocket, "system.memory")
 
-@app.websocket("/ws/system.process.summary")
+@app.websocket("/ws/system.process_summary")
 async def websocket_endpoint(websocket: WebSocket):
-    await websocket_handler(websocket, "system.process.summary")
+    await websocket_handler(websocket, "system.process_summary")
 		
-@app.websocket("/ws/system.socket.summary")
-async def websocket_endpoint(websocket: WebSocket):
-    await websocket_handler(websocket, "system.socket.summary")
-
 @app.websocket("/ws/system.fsstat")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket_handler(websocket, "system.fsstat")
