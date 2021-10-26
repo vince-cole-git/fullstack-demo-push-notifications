@@ -9,7 +9,7 @@ function setupWebsocket(channel) {
 	msgs[channel] = []
 	msgStores[channel] = writable([]);
 
-	const socket = new WebSocket('ws://localhost:8000/ws' + '/' + channel);	
+	const socket = new WebSocket('ws://localhost:8000/ws/' + channel);	
 	
 	// on WebSocket Connection Opened
 	socket.addEventListener('open', function (event) {
@@ -24,8 +24,7 @@ function setupWebsocket(channel) {
 	// on WebSocket Message Received
 	socket.addEventListener('message', function(event) {
 		console.log("WebSocket message received (channel: "+channel+")")
-		const msg = JSON.parse(event.data)
-		msgs[channel] = [ JSON.stringify(msg.content), ...(msgs[channel]) ]
+		msgs[channel] = [ event.data, ...(msgs[channel]) ]
 		msgStores[channel].set( msgs[channel] );
 	});
 

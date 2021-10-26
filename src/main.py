@@ -1,19 +1,15 @@
-import elasticsearch
+import _thread, time, websocket, asyncio, json
+from datetime import datetime
+
 from fastapi import FastAPI, WebSocket
 app = FastAPI()
-
-from elasticsearch import Elasticsearch
-es = Elasticsearch([{'host': 'localhost', 'port': 9200}])
-
-from datetime import datetime
-import asyncio, json
 
 
 from uvicorn.main import Server
 original_handler = Server.handle_exit
 class AppStatus:
     es_websocket = None
-    es_notifications = []
+    es_notifications = {}
     should_exit = False
     @staticmethod
     def handle_exit(*args, **kwargs):
@@ -21,64 +17,98 @@ class AppStatus:
         original_handler(*args, **kwargs)
 Server.handle_exit = AppStatus.handle_exit
 
-prev_records = {
-    "system.process" : '',
-    "system.network" : '',
-    "system.filesystem" : '',
-    "system.cpu" : '',
-    "system.load" : '',
-    "system.memory" : '',
-    "system.process_summary" : '',
-    "system.fsstat" : '',
-    "system.uptime" : ''
-}
 
+# WebSocket client, connected to Elastic. 
+# When it receives a push notification it: determines the channel, then appends the message to the queue for that channel
+def ElasticWatcher():
 
-async def websocket_handler(websocket: WebSocket, channel = ''):
-    
+    def on_open(ws):
+        def run(*args):
+            print("ElasticWatcher: run started")
+            while AppStatus.should_exit is False:
+                print("ElasticWatcher: waiting")
+                time.sleep(1)
+            ws.close()
+        _thread.start_new_thread(run, ())
+
+    def on_message(ws, message):
+        print("ElasticWatcher: message" )
+        data = json.loads(message)['_source']
+        metric = data['metricset']['name']
+        module = data['metricset']['module']
+        channel = module + '.' + metric
+        content = data[module][metric]
+        if channel in AppStatus.es_notifications:
+            # the queue exists (because this channel is enabled) so enqueue the message
+            print("ElasticWatcher: enqueued message for channel " + channel )
+            AppStatus.es_notifications[channel].append(content)
+        else:
+            # there is no queue (because this channel is disabled) so discard the message   
+            print("ElasticWatcher: discarded message for channel " + channel )
+
+    def on_error(ws, error):
+        print("ElasticWatcher: error " + str(error))
+
+    def on_close(ws, close_status_code, close_msg):
+        print("ElasticWatcher: closed")
+
     if AppStatus.es_websocket == None:
-        _thread.start_new_thread( ElasticWatcher, () )
+        AppStatus.es_websocket = websocket.WebSocketApp("ws://localhost:9400/ws/_changes",
+            on_open=on_open,
+            on_message=on_message,
+            on_error=on_error,
+            on_close=on_close
+        )
+        AppStatus.es_websocket.run_forever()
 
-    es_version = "6.5.3"
-    es_index = "metricbeat-" + es_version + "-" + datetime.today().strftime("%Y.%m.%d")
-    es_query = { "bool": { "must": [ { "term": { "metricset.name": channel.split('.')[-1] } } ] } }
+_thread.start_new_thread( ElasticWatcher, () )
 
-    polling_period_sec = 1
+
+# WebSocket server, which the UI connects to (via various endpoint functions, defined below it)
+# there is an endpoint per channel (these can mean anything we want)
+# in this demo (as it uses metricbeat data) we have a channel for each of the different metrics
+# as each endpoint calls this (once) and it loops forever, there is an instance of this running per channel
+async def websocket_handler(ui_websocket: WebSocket, channel):
     
+    is_channel_enabled = False
     i = 0
-    await websocket.accept()
+    await ui_websocket.accept()
     print( str(datetime.now()) + " - WebSocket accepted (channel: " + channel + ")" )
 
-    is_publishing = False
+    # loop forever
     while AppStatus.should_exit is False:
 
+        # wait for (up to) 1 second, for a command, to enable/disable this channel
         try:
-            i = int( await asyncio.wait_for( websocket.receive_text(), polling_period_sec ) )
+            i = int( await asyncio.wait_for( ui_websocket.receive_text(), 1 ) )
             print( str(datetime.now()) + " - server received input " + str(i) + " (channel: " + channel + ")")
-            is_publishing = (i > 0)
+            is_channel_enabled = (i > 0)
         except:
-            i = i
+            pass
 
-        if is_publishing:
-            print("checking notifications array, length: " + str(len(AppStatus.es_notifications)) )
+        # create/delete the message queue for this channel, if enabling/disabling it        
+        if is_channel_enabled:
+            if channel not in AppStatus.es_notifications:
+                AppStatus.es_notifications[channel] = []
+        else:        
+            AppStatus.es_notifications.pop( channel, None ) 
+
+        # if this channel is enabled, dequeue its messages and send them to the UI
+        if is_channel_enabled:
+            print("checking message queue for channel ("+channel+"), num items = " + str(len(AppStatus.es_notifications[channel])) )
             try:
-                es_record = AppStatus.es_notifications.pop()
+                content = AppStatus.es_notifications[channel].pop()
             except:
-                es_record = ''
-            if es_record != '':
-                json_data = json.loads(es_record)
-                print(json_data)
-                if json_data['_source']['metricset']['name'] == channel.split('.')[-1]:
-                    payload = { "channel": channel, "content": es_record }
-                    print( str(datetime.now()) + " - sending ws payload: " + json.dumps(payload) )
-                    await websocket.send_json( payload )
+                content = ''
+            if content != '':
+                print( str(datetime.now()) + " - sending ws payload: " + json.dumps(content) )
+                await ui_websocket.send_json( content )
 
-    await websocket.close()
-    print( str(datetime.now()) + " - WebSocket closed (channel: " + channel + ")")
+    await ui_websocket.close()
+    print( str(datetime.now()) + " - UI WebSocket closed (channel: " + channel + ")")
 
-@app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
-    await websocket_handler(websocket)
+
+### ENDPOINTS ###
 
 @app.websocket("/ws/system.process")
 async def websocket_endpoint(websocket: WebSocket):
@@ -115,81 +145,3 @@ async def websocket_endpoint(websocket: WebSocket):
 @app.websocket("/ws/system.uptime")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket_handler(websocket, "system.uptime")
-
-
-
-
-
-import websocket
-import _thread
-import time
-import threading
-
-
-# async def waitForNextNotification():
-#     message = None
-#     while AppStatus.should_exit is False:
-#         time.sleep(1)
-#         try:
-#             message = notifications.pop(0)
-#         except:
-#             message = None    
-#         if message != None:    
-#             print( str(datetime.now()) + " - (ELASTIC) - notification received" )
-#             return message
-
-@app.websocket("/ws/elastic")
-async def websocket_endpoint(websocket: WebSocket):
-
-    await websocket.accept()
-    print( str(datetime.now()) + " - WebSocket accepted (ELASTIC)" )
-    await websocket.send_json({ "channel":"ELASTIC", "content":"Accepted" })
-    
-    #_thread.start_new_thread( ElasticWatcher, () )
-
-    #while AppStatus.should_exit is False:
-    #    time.sleep(1)
-    #    await ui_websocket.send_json( await waitForNextNotification() )
-    # while AppStatus.should_exit is False:
-    #     time.sleep(1)
-
-    # await ui_websocket.close()
-    # print( str(datetime.now()) + " - WebSocket closed (ELASTIC)" )
-
-
-def ElasticWatcher():
-    
-    def on_message(ws, message):
-        print("ElasticWatcher: message")
-        AppStatus.es_notifications.append(message)
-        print("ElasticWatcher: there are now " + str(len(AppStatus.es_notifications)) + " messages")
-
-    def on_error(ws, error):
-        print("ElasticWatcher: error " + error)
-
-    def on_close(ws, close_status_code, close_msg):
-        print("ElasticWatcher: closed")
-
-    def on_open(ws):
-        #
-        async def run(*args):
-            print("ElasticWatcher: run started")
-            while AppStatus.should_exit is False:
-                await time.sleep(1)
-            ws.close()
-            print("ElasticWatcher: run stopped")
-        #
-        _thread.start_new_thread(run, ())
-
-    if AppStatus.es_websocket == None:
-       
-        AppStatus.es_websocket = websocket.WebSocketApp("ws://localhost:9400/ws/_changes",
-            on_open=on_open,
-            on_message=on_message,
-            on_error=on_error,
-            on_close=on_close
-        )
-
-        print('running the ElasticWatcher websocket forever...')
-        AppStatus.es_websocket.run_forever()
-

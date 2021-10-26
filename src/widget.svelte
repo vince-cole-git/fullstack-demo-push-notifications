@@ -28,15 +28,15 @@
 	<legend>[ {channel} ]</legend>
 	<p>
 		Subscribe? <input type="checkbox" on:change={onToggleFlow} bind:checked={isChecked} />
-		&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<input type="button" on:click={onClearMessages} value="Clear!" />
+		&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+		<input type="button" on:click={onClearMessages} value="Clear!" />
 	</p>
-	{#if isChecked}
-		<p><strong>Count: {messages.length}</strong></p>
-		{#each messages as message}
-		<p>
-			{message}
-		</p>
-		{/each}
-	{/if}
+
+	<p><strong>Count: {messages.length}</strong></p>
+	{#each messages as message}
+	<p>
+		{message}
+	</p>
+	{/each}
 
 </fieldset>
