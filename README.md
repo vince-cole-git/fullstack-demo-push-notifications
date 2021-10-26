@@ -3,23 +3,20 @@ the idea is to allow push notifications to be sent from Elastic to the middlewar
 
 progress so far:
 * UI opens a WS to the middleware, and subscribes to messages coming from it
-* UI sends a boolean down the WS to the middle to toggle on/off its behaviour WRT polling Elastic
-* Elastic is running with MetricBeats, so the index is being populated with system stats
-* UI contains logic to determine when the backend status has changed (ie. when received message has different data to before)
-* have multiple parallel independent components in the UI (each driven by their own backend data)
-* remove the logic (to determine when the backend status has changed) from the UI
-* put this logic in the middleware instead
+* UI sends a boolean down the WS to the middleware to toggle on/off each channel individually
+* MetricBeats is running, populating Elastic with system stats
+* multiple parallel independent components in the UI (each subscribed to their own backend data feed)
 * installed an Elastic plugin which pushes change notifications out on a websocket - requires Elastic and Kibana 6.5.3, so installed them also (instead of latest version 7.15.1) 
-* have to install the plugin into Elastic (and then restart Elastic) which can't be done easily with Elastic running inside a Docker container (so not using Docker now)
-
-TODO
-    configure the plugin to push the appropriate updates out to the WS
-    change the Python code to use the Elastic WS instead of polling it
-
+* installed the plugin into Elastic (and then restarted Elastic) which can't be done easily with Elastic running inside a Docker container (so actually installed Elastic and Kibana)
+* used default config for the plugin, to push all updates out to the WS, seems to be fine as-is (for this demo at least)
+* changed the Python code to use the WS (instead of polling Elastic)
+* totally removed the logic (to determine when the backend status has changed) as the Elastic plugin does this for us now
+* totally removed all polling of Elastic from the middleware, and all polling of the middleware from the UI
 
 
 to start the UI:
     npm run dev
+
 
 to start Python server:
     cd src; uvicorn main:app
@@ -69,7 +66,3 @@ to run the demo:
         # requires Elastic and Kibana to be running first
         /usr/bin/metricbeat setup -e
         systemctl start metricbeat
-
-
-
-
