@@ -66,3 +66,27 @@ to run the demo:
         # requires Elastic and Kibana to be running first
         /usr/bin/metricbeat setup -e
         systemctl start metricbeat
+
+
+
+# miscellaneous useful commands 
+
+# run elastic
+docker run --memory=2gb --name es01-test --net elastic -p 9200:9200 -p 9300:9300 -e "discovery.type=single-node" docker.elastic.co/elasticsearch/elasticsearch:7.15.2
+
+# run rabbitmq
+docker run --memory=500mb -it --rm --name rabbitmq -p 5672:5672 -p 15672:15672 -p 15674:15674 -p 15670:15670 rabbitmq:3.9-management
+
+# run kibana
+docker run --memory=2gb --name kib01-test --volume="$(pwd)/kibana.yml:/usr/share/kibana/config/kibana.yml:ro" --net elastic -p 5601:5601 -e "ELASTICSEARCH_HOSTS=http://es01-test:9200" docker.elastic.co/kibana/kibana:7.15.2
+
+# run metricbeat
+docker run --memory=500mb docker.elastic.co/beats/metricbeat:7.15.2 setup -E setup.kibana.host=< LOCAL IP >:5601 -E output.elasticsearch.hosts=["http://< LOCAL IP >:9200"]
+
+# run metricbeat, with config (metricbeat.yml)
+docker run --name=metricbeat --user=root --volume="$(pwd)/metricbeat.docker.yml:/usr/share/metricbeat/metricbeat.yml:ro" --volume="/var/run/docker.sock:/var/run/docker.sock:ro" --volume="/sys/fs/cgroup:/hostfs/sys/fs/cgroup:ro" --volume="/proc:/hostfs/proc:ro" --volume="/:/hostfs:ro" docker.elastic.co/beats/metricbeat:7.15.2 metricbeat -e -E output.elasticsearch.hosts=["< LOCAL IP >:9200"]
+
+# tell metricbeat to monitor the host machine
+docker run --mount type=bind,source=/proc,target=/hostfs/proc,readonly --mount type=bind,source=/sys/fs/cgroup,target=/hostfs/sys/fs/cgroup,readonly --mount type=bind,source=/,target=/hostfs,readonly --net=host docker.elastic.co/beats/metricbeat:7.15.2 -e -system.hostfs=/hostfs
+
+
