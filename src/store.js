@@ -49,15 +49,6 @@ function setupWebsocket(channel, newState) {
 	return msgStores[channel]
 }
 
-const sendMessage = (channel, message) => {
-	const socket = sockets[channel]
-	if (socket.readyState <= 1) {
-		socket.send(message);
-	}
-}
-
-const forChannel = ( channel ) => { return msgStores[channel] }
-
 const clearMessages = ( channel ) => { 
 	msgs[channel] = []
 	msgStores[channel].set(msgs[channel]) 
@@ -65,7 +56,5 @@ const clearMessages = ( channel ) => {
 
 export default {
 	setupWebsocket,
-	sendMessage,
-	forChannel,
 	clearMessages
 }

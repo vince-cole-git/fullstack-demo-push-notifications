@@ -14,13 +14,9 @@
 
 	onMount( () => {
 		mystore = store.setupWebsocket(channel)
-		mystore.sendMessage = store.sendMessage
-		mystore.clearMessages = store.clearMessages
-
 		mystore.subscribe( x => { messages = x })
-		
 		onToggleFlow = function(){ store.setupWebsocket(channel, !isChecked) }
-		onClearMessages = function(){ mystore.clearMessages(channel) }
+		onClearMessages = function(){ store.clearMessages(channel) }
 	})
 </script>
 
