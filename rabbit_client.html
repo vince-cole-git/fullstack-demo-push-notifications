@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+   <head>
+      <script src="http://localhost:15670/web-stomp-examples/stomp.js"></script>
+      <script>
+        const ws = new WebSocket('ws://localhost:15674/ws');
+        const client = Stomp.over(ws);
+        
+        const on_connect = function(x) {
+            console.log('connected');
+            client.subscribe("/exchange/metrics-demo/system.cpu", function(d) {
+                console.log("message received", d);
+                data = JSON.parse(d.body)
+                console.log("message received JSON =>", data);
+                document.getElementById('output').appendChild( document.createTextNode(JSON.stringify(data) + '\n') )
+            });
+        };
+
+        const on_error =  function(x) {
+            console.log('error', x);
+        };
+
+        client.connect('guest', 'guest', on_connect, on_error, '/');
+
+      </script>
+   </head>
+   <body>
+     <pre id="output" />
+   </body>
+</html>

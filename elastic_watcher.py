@@ -17,14 +17,20 @@ metrics_offset_sec = 10  # how often Metricbeat pushes to Elastic (because times
 def get_timestamp():
     return ( datetime.today() - timedelta(seconds=metrics_offset_sec) ).isoformat()
 
-def publish_message(message):
-    if len(message) > 0:
+def publish_messages(messages):
+    if len(messages) > 0:
         conn = pika.BlockingConnection( mq_params )
         channel = conn.channel()
         channel.exchange_declare( exchange=mq_exchange, exchange_type='direct' )
-        channel.basic_publish( exchange=mq_exchange, routing_key=mq_topic, body=json.dumps(message) )
+        for msg in messages:
+          print("\npublishing message:\n" + json.dumps(sorted_dict(msg)))
+          channel.basic_publish( exchange=mq_exchange, routing_key=mq_topic, body=json.dumps(sorted_dict(msg)) )
         conn.close()
 
+def sorted_dict(d):
+    return {k: sorted_dict(v) if isinstance(v, dict) else v
+        for k, v in sorted(d.items())}
+            
 timestamp_old = get_timestamp()
 while True:
 
@@ -47,7 +53,8 @@ while True:
         es_records = []
 
     # publish the result
+    (s,m) = metric.split(".")
     try:
-        publish_message( es_records )
+        publish_messages([ {k:r["_source"][s][m][k] for k in r["_source"][s][m]} for r in es_records ])
     except Exception as e:
         print("ERROR: " + str(e))
