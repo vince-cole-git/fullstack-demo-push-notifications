@@ -18,6 +18,7 @@
 
         const on_error =  function(x) {
             console.log('error', x);
+            window.setTimeout( function(){location.reload()}, 1000 )
         };
 
         client.connect('guest', 'guest', on_connect, on_error, '/');

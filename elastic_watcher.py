@@ -23,7 +23,7 @@ def publish_messages(messages):
         channel = conn.channel()
         channel.exchange_declare( exchange=mq_exchange, exchange_type='direct' )
         for msg in messages:
-          print("\npublishing message:\n" + json.dumps(sorted_dict(msg)))
+          print("\n" + mq_topic + ":\n" + json.dumps(sorted_dict(msg)))
           channel.basic_publish( exchange=mq_exchange, routing_key=mq_topic, body=json.dumps(sorted_dict(msg)) )
         conn.close()
 
