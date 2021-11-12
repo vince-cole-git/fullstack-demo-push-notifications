@@ -7,7 +7,7 @@ mq_topic = metric
 mq_exchange = "metrics-demo"
 mq_params = pika.ConnectionParameters(host='localhost')
 
-es = Elasticsearch([{'host': 'localhost', 'port': 9200}])
+es = Elasticsearch( [{'host': 'localhost', 'port': 9200}], http_auth=('elastic', '31p3xaJcc3Y9VmKeNXyG') )
 es_version = "7.15.2"
 es_index = "metricbeat-" + es_version
 
@@ -30,7 +30,7 @@ def publish_messages(messages):
 def sorted_dict(d):
     return {k: sorted_dict(v) if isinstance(v, dict) else v
         for k, v in sorted(d.items())}
-            
+
 timestamp_old = get_timestamp()
 while True:
 
@@ -40,7 +40,7 @@ while True:
     es_query = { "bool": { "must": [ 
         { "term": { "event.dataset": sys.argv[1] } }, 
         { "range": { "@timestamp": { "gte" : timestamp_old, "lt" : timestamp_now } } } 
-    ]}}        
+    ]}}
     timestamp_old = timestamp_now
 
     # execute the query
