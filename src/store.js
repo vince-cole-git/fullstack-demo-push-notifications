@@ -1,34 +1,51 @@
 import { writable } from 'svelte/store';
 
 const sockets = []
+const clients = []
 let msgs = {}
 const msgStores = {}
 
-function setupWebsocket(channel) {
+function setupWebsocket(channel, newState) {
 
-	msgs[channel] = []
-	msgStores[channel] = writable([]);
+	// prepare the message store
+	if (msgs[channel] === undefined) {
+		msgs[channel] = []
+	}
+	if (msgStores[channel] === undefined) {	
+		msgStores[channel] = writable([]);
+	}	
 
-	const socket = new WebSocket('ws://localhost:8000/ws/' + channel);	
-	
-	// on WebSocket Connection Opened
-	socket.addEventListener('open', function (event) {
-		console.log("WebSocket opened (channel: "+channel+")");
-	});
+	// toggling the state? 
+    if ((typeof newState) !== "undefined") {
+		const oldState = (!!(sockets[channel]) && !!(clients[channel]))
+		if (newState !== oldState) {
+			// define handlers
+			function onMessage(message) {
+				msgs[channel] = [ message.body, ...(msgs[channel]) ]
+				msgStores[channel].set( msgs[channel] );
+			}
+			function onOpened() {
+				clients[channel].subscribe("/exchange/metrics-demo/"+channel, onMessage)
+			}
+			function onClosed() {
+				clients[channel] = undefined
+				sockets[channel] = undefined
+			}
+			// set the new state
+			if (newState) {
+				// opened
+				sockets[channel] = new WebSocket('ws://localhost:15674/ws');
+				clients[channel] = Stomp.over( sockets[channel] );
+				clients[channel].connect('guest', 'guest', onOpened, onClosed, '/');
+			} else {
+				// closed
+				clients[channel].disconnect()
+				sockets[channel].close()
+				onClosed()
+			}	
+		}
+	}
 
-	// on WebSocket Connection Closed
-	socket.addEventListener('close', function (event) {
-		console.log("WebSocket closed (channel: "+channel+")");
-	});
-
-	// on WebSocket Message Received
-	socket.addEventListener('message', function(event) {
-		console.log("WebSocket message received (channel: "+channel+")")
-		msgs[channel] = [ event.data, ...(msgs[channel]) ]
-		msgStores[channel].set( msgs[channel] );
-	});
-
-	sockets[channel] = socket
 	return msgStores[channel]
 }
 

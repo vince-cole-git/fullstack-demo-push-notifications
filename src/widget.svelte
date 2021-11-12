@@ -18,9 +18,9 @@
 		mystore.clearMessages = store.clearMessages
 
 		mystore.subscribe( x => { messages = x })
-
-		onToggleFlow = function(){ mystore.sendMessage( channel, isChecked ? "0" : "1" ) }
-		onClearMessages = function(){ mystore.clearMessages( channel ) }
+		
+		onToggleFlow = function(){ store.setupWebsocket(channel, !isChecked) }
+		onClearMessages = function(){ mystore.clearMessages(channel) }
 	})
 </script>
 
