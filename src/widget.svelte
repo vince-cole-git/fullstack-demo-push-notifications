@@ -1,35 +1,31 @@
 <script>
 	export let channel = ''
-
 	import { onMount } from 'svelte';
 	import store from './store.js';
-	
-	let messages = []
-	let isChecked = false
 
-	function onToggleFlow() {} 
-	function onClearMessages() {} 
-
-	let mystore = null
+	let isUpdating = false
+	let myMessages = []
 
 	onMount( () => {
-		mystore = store.setupWebsocket(channel)
-		mystore.subscribe( x => { messages = x })
-		onToggleFlow = function(){ store.setupWebsocket(channel, !isChecked) }
-		onClearMessages = function(){ store.clearMessages(channel) }
+		const mystore = store.createChannel(channel)
+		mystore.subscribe( newState => { isUpdating = newState.shift(); myMessages = newState; })
 	})
+
+	const onClearMessages = () => store.clearMessages(channel)
+	const onToggleUpdates = () => store.toggleUpdates(channel, !isUpdating)
+
 </script>
 
 <fieldset style="width:20em; display: inline-block; float: left">
 	<legend>[ {channel} ]</legend>
 	<p>
-		Subscribe? <input type="checkbox" on:change={onToggleFlow} bind:checked={isChecked} />
+		Updating? <input type="checkbox" on:change={onToggleUpdates} bind:checked={isUpdating} />
 		&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
 		<input type="button" on:click={onClearMessages} value="Clear!" />
 	</p>
 
-	<p><strong>Count: {messages.length}</strong></p>
-	{#each messages as message}
+	<p><strong>Count: {myMessages.length}</strong></p>
+	{#each myMessages as message}
 	<p>
 		{message}
 	</p>

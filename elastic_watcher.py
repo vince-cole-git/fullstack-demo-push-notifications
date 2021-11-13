@@ -10,51 +10,61 @@ mq_params = pika.ConnectionParameters(host='localhost')
 es = Elasticsearch( [{'host': 'localhost', 'port': 9200}], http_auth=('elastic', '31p3xaJcc3Y9VmKeNXyG') )
 es_version = "7.15.2"
 es_index = "metricbeat-" + es_version
+es_polling_period_sec = 5   # how often we want to check
+es_metrics_offset_sec = 10  # how often metrics are captured (because timestamps are for capture, not ingest)
 
-polling_period_sec = 1   # how often we want to check Elastic
-metrics_offset_sec = 10  # how often Metricbeat pushes to Elastic (because timestamps are for metric capture, not push)
+def ksort(d):
+    return {k: ksort(v) if isinstance(v, dict) else v for k, v in sorted(d.items())}
 
-def get_timestamp():
-    return ( datetime.today() - timedelta(seconds=metrics_offset_sec) ).isoformat()
+def get_timestamp(offset=0):
+    return ( datetime.today() - timedelta(seconds=offset) ).isoformat()
 
-def publish_messages(messages):
+def log_debug(message):
+    print( get_timestamp() + ": DEBUG : " + message )
+
+def log_error(message):
+    print( get_timestamp() + ": ERROR : " + message )
+
+def prepare_query( timestamp_min, timestamp_max ):
+    log_debug( 'query date range is ' + timestamp_min + " - " + timestamp_max )
+    return { "bool": { "must": [ 
+        { "term": { "event.dataset": sys.argv[1] } }, 
+        { "range": { "@timestamp": { "gte" : timestamp_min, "lt" : timestamp_max } } } 
+    ]}}
+
+def execute_query(es_query):
+    es_body = { "query": es_query, "size": 1000, "sort": { "@timestamp": "desc"} }
+    return es.search( index=es_index, body=es_body )["hits"]["hits"]
+
+def publish_result(messages):
     if len(messages) > 0:
         conn = pika.BlockingConnection( mq_params )
         channel = conn.channel()
         channel.exchange_declare( exchange=mq_exchange, exchange_type='direct' )
         for msg in messages:
-          print("\n" + mq_topic + ":\n" + json.dumps(sorted_dict(msg)))
-          channel.basic_publish( exchange=mq_exchange, routing_key=mq_topic, body=json.dumps(sorted_dict(msg)) )
+          log_debug( "publish (" + mq_topic + ") " + json.dumps(ksort(msg)) )
+          channel.basic_publish( exchange=mq_exchange, routing_key=mq_topic, body=json.dumps(ksort(msg)) )
         conn.close()
 
-def sorted_dict(d):
-    return {k: sorted_dict(v) if isinstance(v, dict) else v
-        for k, v in sorted(d.items())}
-
-timestamp_old = get_timestamp()
+timestamp_min = get_timestamp(es_metrics_offset_sec)
 while True:
 
-    # prepare the query
-    time.sleep(polling_period_sec)
-    timestamp_now = get_timestamp()
-    es_query = { "bool": { "must": [ 
-        { "term": { "event.dataset": sys.argv[1] } }, 
-        { "range": { "@timestamp": { "gte" : timestamp_old, "lt" : timestamp_now } } } 
-    ]}}
-    timestamp_old = timestamp_now
+    # prepare the query 
+    time.sleep(es_polling_period_sec)
+    timestamp_max = get_timestamp(es_metrics_offset_sec)
+    es_query = prepare_query(timestamp_min, timestamp_max)
+    timestamp_min = timestamp_max
 
     # execute the query
-    es_records = []
     try:
-        es_results = es.search( index=es_index, body={ "query": es_query, "size": 10000, "sort": { "@timestamp": "desc"} } )
-        es_records = es_results["hits"]["hits"]
+        es_records = execute_query(es_query)
     except Exception as e:
-        print("ERROR: " + str(e))
-        es_records = []
+        log_error( str(e) )
+        continue
 
-    # publish the result
+    # publish the result    
     (s,m) = metric.split(".")
     try:
-        publish_messages([ {k:r["_source"][s][m][k] for k in r["_source"][s][m]} for r in es_records ])
+        publish_result([ {k:r["_source"][s][m][k] for k in r["_source"][s][m]} for r in es_records ])
     except Exception as e:
-        print("ERROR: " + str(e))
+        log_error( str(e) )

@@ -5,56 +5,54 @@ const clients = []
 let msgs = {}
 const msgStores = {}
 
-function setupWebsocket(channel, newState) {
-
-	// prepare the message store
-	if (msgs[channel] === undefined) {
-		msgs[channel] = []
-	}
-	if (msgStores[channel] === undefined) {	
-		msgStores[channel] = writable([]);
-	}	
-
-	// toggling the state? 
-    if ((typeof newState) !== "undefined") {
-		const oldState = (!!(sockets[channel]) && !!(clients[channel]))
-		if (newState !== oldState) {
-			// define handlers
-			function onMessage(message) {
-				msgs[channel] = [ message.body, ...(msgs[channel]) ]
-				msgStores[channel].set( msgs[channel] );
-			}
-			function onOpened() {
-				clients[channel].subscribe("/exchange/metrics-demo/"+channel, onMessage)
-			}
-			function onClosed() {
-				clients[channel] = undefined
-				sockets[channel] = undefined
-			}
-			// set the new state
-			if (newState) {
-				// opened
-				sockets[channel] = new WebSocket('ws://localhost:15674/ws');
-				clients[channel] = Stomp.over( sockets[channel] );
-				clients[channel].connect('guest', 'guest', onOpened, onClosed, '/');
-			} else {
-				// closed
-				clients[channel].disconnect()
-				sockets[channel].close()
-				onClosed()
-			}	
-		}
-	}
-
+// create the message store
+function createChannel(channel) {
+	msgs[channel] = [false]
+	msgStores[channel] = writable([]);
 	return msgStores[channel]
 }
 
+// empty the message store
 const clearMessages = ( channel ) => { 
 	msgs[channel] = []
 	msgStores[channel].set(msgs[channel]) 
 }
 
+// define handlers and open or close a websocket
+function toggleUpdates(channel, isActive) {
+
+	function onMessage(message) {
+		msgs[channel] = [ message.body, ...(msgs[channel]) ]
+		msgs[channel][0] = true
+		msgStores[channel].set( msgs[channel] );
+	}
+	function onOpened() {
+		console.log("######################## WEBSOCKET OPENED ########################", channel)
+		clients[channel].subscribe("/exchange/metrics-demo/"+channel, onMessage)
+		msgs[channel][0] = true
+		msgStores[channel].set( msgs[channel] );
+	}
+	function onClosed() {
+		console.log("######################## WEBSOCKET CLOSED ########################", channel)
+		clients[channel] = undefined
+		sockets[channel] = undefined
+		msgs[channel][0] = false
+		msgStores[channel].set( msgs[channel] );
+	}
+
+	if (isActive) {
+		sockets[channel] = new WebSocket('ws://localhost:15674/ws');
+		clients[channel] = Stomp.over( sockets[channel] );
+		clients[channel].connect('guest', 'guest', onOpened, onClosed, '/');
+	} else {
+		clients[channel].disconnect()
+		sockets[channel].close()
+		onClosed()
+	}	
+}
+
 export default {
-	setupWebsocket,
-	clearMessages
+	createChannel,
+	clearMessages,
+	toggleUpdates
 }
