@@ -14,16 +14,16 @@ function createChannel(channel) {
 
 // empty the message store
 const clearMessages = ( channel ) => { 
-	msgs[channel] = []
-	msgStores[channel].set(msgs[channel]) 
+	msgs[channel] = [ msgs[channel][0] ]
+	msgStores[channel].set( msgs[channel] ) 
 }
 
 // define handlers and open or close a websocket
 function toggleUpdates(channel, isActive) {
 
 	function onMessage(message) {
-		msgs[channel] = [ message.body, ...(msgs[channel]) ]
-		msgs[channel][0] = true
+		console.log("######################## WEBSOCKET MESSAGE ########################", channel)
+		msgs[channel] = [ true, message.body, ...(msgs[channel]) ]
 		msgStores[channel].set( msgs[channel] );
 	}
 	function onOpened() {
