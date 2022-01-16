@@ -48,3 +48,5 @@ the next step is to actually create some data - ie. start the Metrics Producer w
 ## start the MP (metricbeat) 
     docker run --name=metricbeat --user=root  --volume="/var/run/docker.sock:/var/run/docker.sock:ro" --volume="/sys/fs/cgroup:/hostfs/sys/fs/cgroup:ro" --volume="/proc:/hostfs/proc:ro" --volume="/:/hostfs:ro" docker.elastic.co/beats/metricbeat:7.15.2 metricbeat -e -E output.elasticsearch.hosts=["192.168.1.145:9200"]
 
+## in the UI now watch the page - for any "Subscribed" channels - metrics will now start to appear!
+
