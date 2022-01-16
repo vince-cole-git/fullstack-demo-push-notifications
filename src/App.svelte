@@ -1,6 +1,5 @@
 <script>
 	import { onMount } from 'svelte';
-	//import store from './store.js';
 
 	import Widget from './widget.svelte';
 
@@ -16,10 +15,6 @@
 		"system.uptime"
 	]
 	
-	onMount( () => {
-		//store.setupChannels( channels )
-	})
-
 </script>
 
 <h1>WebSocket Demo</h1>

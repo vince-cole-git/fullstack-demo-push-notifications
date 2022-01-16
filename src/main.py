@@ -32,10 +32,12 @@ prev_records = {
 
 async def websocket_handler(websocket: WebSocket, channel = ''):
     
-    es_version = "6.5.3"
-    es_index = "metricbeat-" + es_version + "-" + datetime.today().strftime("%Y.%m.%d")
+    es_version = "7.15.2"
+    es_index = "metricbeat-" + es_version
     print( "querying ES index: " + es_index )
-    es_query = { "bool": { "must": [ { "term": { "metricset.name": channel.split('.')[-1] } } ] } }
+    es_query = { "bool": { "must": [ { "term": { "event.dataset": channel } } ] } }
+
+    channel_split = channel.split('.')
 
     # TODO can we push from Elastic instead of polling it?
     polling_period_sec = 1
@@ -60,9 +62,12 @@ async def websocket_handler(websocket: WebSocket, channel = ''):
                 es_query_body = { "query": es_query, "size": 1, "sort": { "@timestamp": "desc"} }
                 print( es_query_body )
                 es_result = es.search( index=es_index, body=es_query_body )
-                es_record = es_result["hits"]["hits"][0]["_source"]["system"]
-            except:
+                print(es_result)
+                es_record = es_result["hits"]["hits"][0]["_source"][ channel_split[0] ][ channel_split[1] ]
+            except Exception as err:
+                print("Exception: " + str(err))
                 es_record = ''
+
             if (es_record != '') and (es_record != prev_records[channel] ):
                 prev_records[channel] = es_record
                 payload = { "channel": channel, "content": es_record }
