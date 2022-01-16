@@ -41,7 +41,10 @@ this doesn't exist, because the Metrics Producer isn't running yet
 ### then setup the Metrics index
     docker run --net elastic docker.elastic.co/beats/metricbeat:7.15.2 setup -E setup.kibana.host=kib01-test:5601 -E output.elasticsearch.hosts=["http://es01-test:9200"]
 
+## in the UI try to "Subscribe" - now it works
+however, there is no metrics data to display because the Metrics index is empty.
+the next step is to actually create some data - ie. start the Metrics Producer which will populate the Elastic index
+
 ## start the MP (metricbeat) 
     docker run --name=metricbeat --user=root  --volume="/var/run/docker.sock:/var/run/docker.sock:ro" --volume="/sys/fs/cgroup:/hostfs/sys/fs/cgroup:ro" --volume="/proc:/hostfs/proc:ro" --volume="/:/hostfs:ro" docker.elastic.co/beats/metricbeat:7.15.2 metricbeat -e -E output.elasticsearch.hosts=["192.168.1.145:9200"]
 
-## in the UI try to "Subscribe" - now it works
