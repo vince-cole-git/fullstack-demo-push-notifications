@@ -1,68 +1,103 @@
-demo for use of WebSockets 
-the idea is to allow push notifications to be sent from Elastic to the middleware (Python: FastAPI) and then on up to the UI (JavaScript: Svelte), in order to avoid the UI having to constantly poll the middleware which then has to constantly poll Elastic in response (or perform some kind of caching)
+### DEMO 2: ELASTIC PUSH NOTIFICATION PLUGIN
 
-progress so far:
-* UI opens a WS to the middleware, and subscribes to messages coming from it
-* UI sends a boolean down the WS to the middleware to toggle on/off each channel individually
-* MetricBeats is running, populating Elastic with system stats
-* multiple parallel independent components in the UI (each subscribed to their own backend data feed)
-* installed an Elastic plugin which pushes change notifications out on a websocket - requires Elastic and Kibana 6.5.3, so installed them also (instead of latest version 7.15.1) 
-* installed the plugin into Elastic (and then restarted Elastic) which can't be done easily with Elastic running inside a Docker container (so actually installed Elastic and Kibana)
-* used default config for the plugin, to push all updates out to the WS, seems to be fine as-is (for this demo at least)
-* changed the Python code to use the WS (instead of polling Elastic)
-* totally removed the logic (to determine when the backend status has changed) as the Elastic plugin does this for us now
-* totally removed all polling of Elastic from the middleware, and all polling of the middleware from the UI
+Middleware listens to "push" notifications from Elastic instead of polling it
+Middleware also pushes notifications to the UI, over WebSockets
+It is both a WebSocket client (to Elastic) and a server (to the UI)
 
+there will a subsequent demo for each of the following change:
+* DEMO 3: Using RabbitMQ instead of Websockets (to push updates to the UI)
 
-to start the UI:
+## What is being demonstrated here:
+* Generating system metrics using metricbeat (which stores them in Elastic)
+* Python middleware accepting the metrics from Elastic (for "subscribed" channels only)
+* Python middleware pushing the metrics into the UI via a WebSocket
+* UI displaying the metrics
+* UI sending signals (via the WebSocket to the middleware) to toggle channel subscriptions on/off
+
+## start the UI:
     npm run dev
+    BROWSER - http://localhost:5000/
 
+UI displays a 'widget' per channel, with a "subscribe" button and an area to display the metrics
+there is a channel per metric type, as reported by metricbeat
+each widget is independent of the others and has its own channel, uses a WebSocket to talk to the middleware. Each WebSocket uses its own middleware endpoint.
+look in the dev tools - Network/Console - see how all WS have failed (because there is no MW running)
 
-to start Python server:
-    cd src; uvicorn main:app
+## start the middleware (before Elastic is started):
+    cd src; 
+    virtualenv ./demo2
+    source ./demo2/bin/activate
+    pip install -r ../requirements.txt     
+    uvicorn main:app
 
+This will FAIL because there is a dependency from the middleware to Elastic. 
+The middleware tries to listen to the Elastic websocket, but Elastic isn't running yet, so this fails.
+So we need to start Elastic first...
 
-to install *** VERSION: 6.5.3 *** of Elastic, Kibana, Metricbeat
-    echo "deb https://artifacts.elastic.co/packages/6.x/apt stable main" | sudo tee –a /etc/apt/sources.list.d/elastic-6.x.list
-    apt update
-    apt install elasticsearch=6.5.3
-    apt install kibana=6.5.3
-    cd /tmp
-    wget https://artifacts.elastic.co/downloads/beats/metricbeat/metricbeat-6.5.3-amd64.deb
-    dpkg -i /tmp/metricbeat-6.5.3-amd64.deb
+## to run Elastic container (temporary, for installing plugin only)
+    sudo docker run --memory=1gb --name es01-test --net elastic -p 9200:9200 -p 9300:9300 -e "discovery.type=single-node" docker.elastic.co/elasticsearch/elasticsearch:6.5.3
 
-
-to install the plugin
+## install the plugin (into temporary Elastic container) and extract the plugins directory 
+    # build the plugin
     git clone https://github.com/ForgeRock/es-change-feed-plugin.git
     cd es-change-feed-plugin
     mvn clean install  
-    mkdir /tmp/elasticsearch
-    cp target/es-changes-feed-plugin.zip /tmp/elasticsearch
-    cd /tmp/elasticsearch
-    unzip es-changes-feed-plugin.zip 
-    cd ..
-    zip -r es-changes-feed-plugin.zip elasticsearch
-    # requires Elastic to be running first
+    sudo docker cp target/es-changes-feed-plugin.zip es01-test:/tmp/es-changes-feed-plugin.zip
+    # install the plugin
+    sudo docker exec -it es01-test /bin/bash
     /usr/share/elasticsearch/bin/elasticsearch-plugin install file:///tmp/es-changes-feed-plugin.zip
-    systemctl restart elastic 
+    /usr/share/elasticsearch/bin/elasticsearch-plugin list
+    exit
+    # get the plugins directory
+    mkdir es-plugins
+    cd es-plugins
+    sudo docker cp es01-test:/usr/share/elasticsearch/plugins .
+
+## to run Elastic container (mounting the extracted plugins directory into it, so it runs the plugin we want)
+    sudo docker container stop es01-test
+    sudo docker container rm es01-test
+    sudo docker run -v $(pwd)/plugins:/usr/share/elasticsearch/plugins --memory=1gb --name es01-test --net elastic -p 9200:9200 -p 9300:9300 -p 9400:9400 -e "discovery.type=single-node" docker.elastic.co/elasticsearch/elasticsearch:6.5.3
 
 
-to run the demo:
-    
-    start Python server:
-        cd src; uvicorn main:app
+## start the middleware (once Elastic is running):
+    cd src; 
+    virtualenv ./demo2
+    source ./demo2/bin/activate
+    pip install -r ../requirements.txt     
+    uvicorn main:app
+check this in the browser - http://localhost:8000
 
-    start the UI:
-        npm run dev
+refresh the UI - now see how the WS connections have succeeded
+in the UI try to "Subscribe" - nothing happens (but NOT due to errors, this time though)
+check the Python console output 
+  - note how the UI can send (in this case, boolean) messages down the WS to the MW (per channel) to toggle a subscription on/off
+  - subscriptions are NOT failing - its simply the case that there aren't any metrics being produced yet
+We need to produce some metrics...  
 
-    start Elastic:
-        systemctl start elastic
+## prepare to start the MP
+### first start Kibana
+    sudo docker run --memory=1gb --name kib01-test --net elastic -p 5601:5601 -e "ELASTICSEARCH_URL=http://es01-test:9200" docker.elastic.co/kibana/kibana:6.5.3
+### then setup the Metrics index
+    sudo docker run --net elastic docker.elastic.co/beats/metricbeat:6.5.3 setup -E setup.kibana.host=kib01-test:5601 -E output.elasticsearch.hosts=["http://es01-test:9200"]
+Check in browser:
+    http://localhost:5601/app/discover
 
-    start Kibana:
-        # requires Elastic to be running first
-        systemctl start kibana
+## start the MP (metricbeat) 
+    sudo docker run --name=metricbeat --user=root  --volume="/var/run/docker.sock:/var/run/docker.sock:ro" --volume="/sys/fs/cgroup:/hostfs/sys/fs/cgroup:ro" --volume="/proc:/hostfs/proc:ro" --volume="/:/hostfs:ro" docker.elastic.co/beats/metricbeat:6.5.3 metricbeat -e -E output.elasticsearch.hosts=["192.168.1.145:9200"]
 
-    start  Metricbeat:
-        # requires Elastic and Kibana to be running first
-        /usr/bin/metricbeat setup -e
-        systemctl start metricbeat
+Check data is appearing:
+    Elastic - http://localhost:9200/_search
+    Kibana  - http://localhost:5601/app/kibana#/discover?_g=()&_a=(columns:!(_source),index:'metricbeat-*',interval:auto)
+
+## In the MW console should now see metrics being reported (and discarded because no subscriptions yet)
+
+## in the UI now watch the page - for any "Subscribed" channels - metrics will now start to appear!
+ - see subscribed channel's Count increasing
+ - see how channels increase independently of each other
+
+## Notes:
+MW no longer polls Elastic
+UI no longer contains logic for determining whether to show messages or not (this is done in MW)
+MW is still a bit complex
+There is still a dependency from MW upon the Elastic (plugin) already being running
+It would be better to decouple these, via a message bus (see DEMO 3)
