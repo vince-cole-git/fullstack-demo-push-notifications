@@ -18,35 +18,54 @@ there will a subsequent demo for each of the following changes:
 
 ## start the UI:
     npm run dev
+    BROWSER - http://localhost:5000/
 
-there is a widget per channel (each type of system metrics available) a "subscribe" button and an area to display the metrics
-each widget is independent of the others and has its own channel, uses a WebSocket to talk to the middleware
+UI displays a 'widget' per channel, with a "subscribe" button and an area to display the metrics
+there is a channel per metric type, as reported by metricbeat
+each widget is independent of the others and has its own channel, uses a WebSocket to talk to the middleware. Each WebSocket uses its own middleware endpoint.
 look in the dev tools - Network/Console - see how all WS have failed (because there is no MW running)
+
 ## start the middleware:
     cd src; uvicorn main:app
+check this in the browser - http://localhost:8000
 
 refresh the UI - now see how the WS connections have succeeded
 in the UI try to "Subscribe" - nothing happens
-check the Python console output - subscriptions fail unless Elastic is running
-## start Elastic:
-    docker run --memory=1gb --name es01-test --net elastic -p 9200:9200 -p 9300:9300 -e "discovery.type=single-node" docker.elastic.co/elasticsearch/elasticsearch:7.15.2
+check the Python console output 
+  - note how the UI can send (in this case, boolean) messages down the WS to the MW (per channel) to toggle a subscription on/off
+  - subscriptions fail unless Elastic is running (see: Connection refused)
 
+## start Elastic:
+    sudo docker run --memory=1gb --name es01-test --net elastic -p 9200:9200 -p 9300:9300 -e "discovery.type=single-node" docker.elastic.co/elasticsearch/elasticsearch:7.15.2
+
+check this in the browser - http://localhost:9200/_search
 in the UI try to "Subscribe" - nothing happens again
-check the Python console output - subscriptions fail unless Elastic contains the Metrics index
-this doesn't exist, because the Metrics Producer isn't running yet
+check the Python console output - connections succeed, but subscriptions still fail because Elastic doesn't contain the Metrics index (yet)
+this is because the Metrics Producer isn't running yet (it will auto-create the index on startup)
 
 ## prepare to start the MP
 ### first start Kibana
-    docker run --memory=1gb --name kib01-test --net elastic -p 5601:5601 -e "ELASTICSEARCH_HOSTS=http://es01-test:9200" docker.elastic.co/kibana/kibana:7.15.2
+    sudo docker run --memory=1gb --name kib01-test --net elastic -p 5601:5601 -e "ELASTICSEARCH_HOSTS=http://es01-test:9200" docker.elastic.co/kibana/kibana:7.15.2
 ### then setup the Metrics index
-    docker run --net elastic docker.elastic.co/beats/metricbeat:7.15.2 setup -E setup.kibana.host=kib01-test:5601 -E output.elasticsearch.hosts=["http://es01-test:9200"]
+    sudo docker run --net elastic docker.elastic.co/beats/metricbeat:7.15.2 setup -E setup.kibana.host=kib01-test:5601 -E output.elasticsearch.hosts=["http://es01-test:9200"]
+Check in browser:
+    http://localhost:5601/app/discover
 
 ## in the UI try to "Subscribe" - now it works
 however, there is no metrics data to display because the Metrics index is empty.
 the next step is to actually create some data - ie. start the Metrics Producer which will populate the Elastic index
 
 ## start the MP (metricbeat) 
-    docker run --name=metricbeat --user=root  --volume="/var/run/docker.sock:/var/run/docker.sock:ro" --volume="/sys/fs/cgroup:/hostfs/sys/fs/cgroup:ro" --volume="/proc:/hostfs/proc:ro" --volume="/:/hostfs:ro" docker.elastic.co/beats/metricbeat:7.15.2 metricbeat -e -E output.elasticsearch.hosts=["192.168.1.145:9200"]
+    sudo docker run --name=metricbeat --user=root  --volume="/var/run/docker.sock:/var/run/docker.sock:ro" --volume="/sys/fs/cgroup:/hostfs/sys/fs/cgroup:ro" --volume="/proc:/hostfs/proc:ro" --volume="/:/hostfs:ro" docker.elastic.co/beats/metricbeat:7.15.2 metricbeat -e -E output.elasticsearch.hosts=["192.168.1.145:9200"]
 
 ## in the UI now watch the page - for any "Subscribed" channels - metrics will now start to appear!
+Elastic - http://localhost:9200/_search
+Kibana  - http://localhost:5601/app/discover
+^should both contain data
+Refresh Kibana - see the hits increasing
 
+In UI
+ - see subscribed channel's Count increasing
+ - see how channels increase independently of each other
+In MW console
+- see how the MW constantly polls Elastic (this is what we want to avoid doing, see DEMO 2)
