@@ -1,7 +1,7 @@
 # Default Kibana configuration for docker target
 server.host: "0"
 server.shutdownTimeout: "5s"
-elasticsearch.hosts: [ "http://192.168.1.145:9200" ]
+elasticsearch.hosts: ["http://elasticsearch:9200"]
 monitoring.ui.container.elasticsearch.enabled: true
 
 xpack.encryptedSavedObjects.encryptionKey: d30b1c0b41c9eef98d35070ec4f80bf2
